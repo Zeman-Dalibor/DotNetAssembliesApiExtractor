@@ -27,6 +27,7 @@ namespace DotNetAssembliesApiExtractor
 
                 Console.WriteLine($"Scanning: {options.ScanDir}");
                 Console.WriteLine($"Output: {options.OutputDir}");
+                Console.WriteLine();
 
                 var scanner = new AssemblyScanner(options.ReferenceAssembliesDir);
                 var dtos = scanner.ScanDirectory(options.ScanDir);

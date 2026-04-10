@@ -1,7 +1,7 @@
 <Solution>
   <Project Path="DotNetAssembliesApiExtractor/DotNetAssembliesApiExtractor.csproj" />
   <Project Path="DotNetAssembliesApiExtractor.Tests/DotNetAssembliesApiExtractor.Tests.csproj" />
-  <Project Path="TestAssemblies/Net35/TestAssemblies.Net35.csproj" />
+  <Project Path="TestAssemblies/Net35/TestAssemblies.Net35.csproj" Id="5d8d6f86-5b12-4e8f-93e1-8d1a4c9f6b1a" />
   <Project Path="TestAssemblies/Net45/TestAssemblies.Net45.csproj" />
   <Project Path="TestAssemblies/Net48/TestAssemblies.Net48.csproj" />
   <Project Path="TestAssemblies/NetCoreApp3.1/TestAssemblies.NetCoreApp3.1.csproj" />

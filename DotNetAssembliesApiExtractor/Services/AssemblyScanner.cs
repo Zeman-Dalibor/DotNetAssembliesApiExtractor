@@ -147,6 +147,26 @@ namespace DotNetAssembliesApiExtractor.Services
         {
             var paths = new List<string>();
 
+            // 0) include trusted platform assemblies (TPA) so the core assembly can be resolved
+            try
+            {
+                var tpa = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+                if (!string.IsNullOrEmpty(tpa))
+                {
+                    var entries = tpa.Split(Path.PathSeparator);
+                    foreach (var e in entries)
+                    {
+                        try
+                        {
+                            if (!string.IsNullOrEmpty(e) && File.Exists(e))
+                                paths.Add(e);
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+
             // 1) user-provided reference assemblies directory
             try
             {
@@ -202,7 +222,49 @@ namespace DotNetAssembliesApiExtractor.Services
             }
             catch { }
 
-            // 6) ensure the analyzed assembly itself is present
+            // 6) fallback: installed .NET Core/5+ runtimes (essential for single-file publish where TPA/runtime dir are unavailable)
+            try
+            {
+                var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                var netCoreAppDir = Path.Combine(pf, "dotnet", "shared", "Microsoft.NETCore.App");
+                if (Directory.Exists(netCoreAppDir))
+                {
+                    var latestRuntime = Directory.GetDirectories(netCoreAppDir)
+                        .OrderByDescending(d => d)
+                        .FirstOrDefault();
+                    if (latestRuntime != null)
+                        paths.AddRange(Directory.GetFiles(latestRuntime, "*.dll"));
+                }
+            }
+            catch { }
+
+            // 7) fallback: .NET Framework assemblies from Windows directory (for mscorlib.dll when analyzing .NET Framework assemblies)
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                try
+                {
+                    var winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                    var fwDirs = new[]
+                    {
+                        Path.Combine(winDir, "Microsoft.NET", "Framework64", "v4.0.30319"),
+                        Path.Combine(winDir, "Microsoft.NET", "Framework", "v4.0.30319"),
+                        Path.Combine(winDir, "Microsoft.NET", "Framework64", "v2.0.50727"),
+                        Path.Combine(winDir, "Microsoft.NET", "Framework", "v2.0.50727"),
+                    };
+                    foreach (var dir in fwDirs)
+                    {
+                        var mscorlib = Path.Combine(dir, "mscorlib.dll");
+                        if (File.Exists(mscorlib))
+                        {
+                            paths.Add(mscorlib);
+                            break;
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            // 8) ensure the analyzed assembly itself is present
             paths.Add(assemblyPath);
 
             // dedupe by file name (assembly simple name) to avoid loading same identity twice
