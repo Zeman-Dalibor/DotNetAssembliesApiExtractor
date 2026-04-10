@@ -205,8 +205,32 @@ namespace DotNetAssembliesApiExtractor.Services
             // 6) ensure the analyzed assembly itself is present
             paths.Add(assemblyPath);
 
-            // dedupe and return
-            return paths.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            // dedupe by file name (assembly simple name) to avoid loading same identity twice
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in paths)
+            {
+                try
+                {
+                    var name = Path.GetFileName(p);
+                    if (string.IsNullOrEmpty(name)) continue;
+                    if (!map.ContainsKey(name))
+                    {
+                        map[name] = p;
+                    }
+                }
+                catch { }
+            }
+
+            // Ensure the assembly being analyzed is present and wins for its file name
+            try
+            {
+                var asmName = Path.GetFileName(assemblyPath);
+                if (!string.IsNullOrEmpty(asmName))
+                    map[asmName] = assemblyPath;
+            }
+            catch { }
+
+            return map.Values.ToList();
         }
 
         private static string? GetTargetFrameworkFromAssembly(string assemblyPath)

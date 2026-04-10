@@ -1,3 +1,11 @@
 <Solution>
   <Project Path="DotNetAssembliesApiExtractor/DotNetAssembliesApiExtractor.csproj" />
+  <Project Path="DotNetAssembliesApiExtractor.Tests/DotNetAssembliesApiExtractor.Tests.csproj" />
+  <Project Path="TestAssemblies/Net35/TestAssemblies.Net35.csproj" />
+  <Project Path="TestAssemblies/Net45/TestAssemblies.Net45.csproj" />
+  <Project Path="TestAssemblies/Net48/TestAssemblies.Net48.csproj" />
+  <Project Path="TestAssemblies/NetCoreApp3.1/TestAssemblies.NetCoreApp3.1.csproj" />
+  <Project Path="TestAssemblies/Net5/TestAssemblies.Net5.csproj" />
+  <Project Path="TestAssemblies/Net6/TestAssemblies.Net6.csproj" />
+  <Project Path="TestAssemblies/Net10/TestAssemblies.Net10.csproj" />
 </Solution>
