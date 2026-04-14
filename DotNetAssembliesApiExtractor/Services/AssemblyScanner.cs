@@ -150,10 +150,29 @@ namespace DotNetAssembliesApiExtractor.Services
 
         private List<string> CollectResolverPaths(string assemblyPath)
         {
-            var paths = new List<string>();
             if (_verbose) Console.WriteLine($"Collecting resolver paths for: {assemblyPath}");
 
-            // 0) include trusted platform assemblies (TPA) so the core assembly can be resolved
+            // Detect target framework early so we can prioritize correct assemblies during dedup
+            string? detectedTfm = null;
+            try { detectedTfm = GetTargetFrameworkFromAssembly(assemblyPath); } catch { }
+            var isNetFramework = !string.IsNullOrEmpty(detectedTfm) &&
+                detectedTfm!.StartsWith(".NETFramework", StringComparison.OrdinalIgnoreCase);
+            if (_verbose) Console.WriteLine($"  [TFM] Detected: {detectedTfm ?? "(none)"}, isNetFramework={isNetFramework}");
+
+            // Collect paths into priority groups.
+            // The dedup map is built from lowest to highest priority (last write wins).
+            // This mirrors runtime resolution: local assemblies > user refs > TFM refs > system > fallbacks.
+            //
+            // NOTE: TPA and RuntimeEnvironment.GetRuntimeDirectory() return the SCANNER'S runtime
+            // (e.g. .NET 6), not the target assembly's runtime. They belong to the fallback group
+            // and must not override TFM-detected or .NET Framework assemblies.
+            var localPaths = new List<string>();       // P5 (highest) — assemblies next to target
+            var userRefPaths = new List<string>();     // P4 — user-provided --refsDir
+            var tfmRefPaths = new List<string>();      // P3 — TFM reference assemblies (correct target runtime)
+            var netFxSysPaths = new List<string>();    // P2 — .NET Framework directory + WPF (system-installed)
+            var fallbackPaths = new List<string>();    // P1 (lowest) — scanner's TPA/runtime, AppDomain, installed runtimes
+
+            // --- Collect: TPA (scanner's own runtime — fallback only) ---
             try
             {
                 var tpa = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
@@ -167,7 +186,7 @@ namespace DotNetAssembliesApiExtractor.Services
                         {
                             if (!string.IsNullOrEmpty(e) && File.Exists(e))
                             {
-                                paths.Add(e);
+                                fallbackPaths.Add(e);
                                 added++;
                             }
                         }
@@ -176,7 +195,7 @@ namespace DotNetAssembliesApiExtractor.Services
                             Console.Error.WriteLine($"Error adding TPA entry '{e}': {ex.Message}");
                         }
                     }
-                    if (_verbose) Console.WriteLine($"  [TPA] Added {added} assemblies from Trusted Platform Assemblies.");
+                    if (_verbose) Console.WriteLine($"  [TPA] Added {added} assemblies (scanner's runtime — fallback priority).");
                 }
                 else
                 {
@@ -188,13 +207,33 @@ namespace DotNetAssembliesApiExtractor.Services
                 Console.Error.WriteLine($"Error loading TRUSTED_PLATFORM_ASSEMBLIES: {ex.Message}");
             }
 
-            // 1) user-provided reference assemblies directory
+            // --- Collect: scanner's runtime directory (fallback only) ---
+            try
+            {
+                var runtimeDir = RuntimeEnvironment.GetRuntimeDirectory();
+                if (!string.IsNullOrEmpty(runtimeDir) && Directory.Exists(runtimeDir))
+                {
+                    var files = GetAssemblyFiles(runtimeDir);
+                    fallbackPaths.AddRange(files);
+                    if (_verbose) Console.WriteLine($"  [ScannerRuntime] Added {files.Length} assemblies from scanner's runtime directory: {runtimeDir} (fallback priority).");
+                }
+                else
+                {
+                    if (_verbose) Console.WriteLine("  [ScannerRuntime] Runtime directory not found.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error loading scanner runtime directory assemblies: {ex.Message}");
+            }
+
+            // --- Collect: user-provided reference assemblies ---
             try
             {
                 if (!string.IsNullOrEmpty(_referenceAssembliesDir) && Directory.Exists(_referenceAssembliesDir))
                 {
                     var files = GetAssemblyFiles(_referenceAssembliesDir);
-                    paths.AddRange(files);
+                    userRefPaths.AddRange(files);
                     if (_verbose) Console.WriteLine($"  [UserRef] Added {files.Length} assemblies from user-provided directory: {_referenceAssembliesDir}");
                 }
                 else
@@ -207,23 +246,22 @@ namespace DotNetAssembliesApiExtractor.Services
                 Console.Error.WriteLine($"Error loading reference assemblies from '{_referenceAssembliesDir}': {ex.Message}");
             }
 
-            // 2) try to detect target framework from the assembly and find reference assemblies
+            // --- Collect: TFM reference assemblies (correct target runtime) ---
             try
             {
-                var tfm = GetTargetFrameworkFromAssembly(assemblyPath);
-                if (!string.IsNullOrEmpty(tfm))
+                if (!string.IsNullOrEmpty(detectedTfm))
                 {
-                    if (_verbose) Console.WriteLine($"  [TFM] Detected target framework: {tfm}");
-                    var tfmPaths = FindReferenceAssembliesForTfm(tfm);
-                    if (tfmPaths != null && tfmPaths.Any())
+                    if (_verbose) Console.WriteLine($"  [TFM] Using detected target framework: {detectedTfm}");
+                    var tfmFiles = FindReferenceAssembliesForTfm(detectedTfm);
+                    if (tfmFiles != null && tfmFiles.Any())
                     {
-                        var tfmList = tfmPaths.ToList();
-                        paths.AddRange(tfmList);
-                        if (_verbose) Console.WriteLine($"  [TFM] Added {tfmList.Count} assemblies for TFM '{tfm}'.");
+                        var tfmList = tfmFiles.ToList();
+                        tfmRefPaths.AddRange(tfmList);
+                        if (_verbose) Console.WriteLine($"  [TFM] Added {tfmList.Count} assemblies for TFM '{detectedTfm}'.");
                     }
                     else
                     {
-                        if (_verbose) Console.WriteLine($"  [TFM] No reference assemblies found for TFM '{tfm}'.");
+                        if (_verbose) Console.WriteLine($"  [TFM] No reference assemblies found for TFM '{detectedTfm}'.");
                     }
                 }
                 else
@@ -236,35 +274,15 @@ namespace DotNetAssembliesApiExtractor.Services
                 Console.Error.WriteLine($"Error detecting target framework: {ex.Message}");
             }
 
-            // 3) runtime directory (if present)
-            try
-            {
-                var runtimeDir = RuntimeEnvironment.GetRuntimeDirectory();
-                if (!string.IsNullOrEmpty(runtimeDir) && Directory.Exists(runtimeDir))
-                {
-                    var files = GetAssemblyFiles(runtimeDir);
-                    paths.AddRange(files);
-                    if (_verbose) Console.WriteLine($"  [Runtime] Added {files.Length} assemblies from runtime directory: {runtimeDir}");
-                }
-                else
-                {
-                    if (_verbose) Console.WriteLine("  [Runtime] Runtime directory not found.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Error loading runtime directory assemblies: {ex.Message}");
-            }
-
-            // 4) assemblies next to the target assembly
+            // --- Collect: assemblies next to the target assembly (local / sibling) ---
             try
             {
                 var assemblyDir = Path.GetDirectoryName(assemblyPath);
                 if (!string.IsNullOrEmpty(assemblyDir) && Directory.Exists(assemblyDir))
                 {
                     var files = GetAssemblyFiles(assemblyDir);
-                    paths.AddRange(files);
-                    if (_verbose) Console.WriteLine($"  [SiblingDir] Added {files.Length} assemblies from target assembly directory: {assemblyDir}");
+                    localPaths.AddRange(files);
+                    if (_verbose) Console.WriteLine($"  [Local] Added {files.Length} assemblies from target assembly directory: {assemblyDir}");
                 }
             }
             catch (Exception ex)
@@ -272,7 +290,7 @@ namespace DotNetAssembliesApiExtractor.Services
                 Console.Error.WriteLine($"Error loading assemblies from target directory: {ex.Message}");
             }
 
-            // 5) currently loaded assemblies (useful for single-file publish where runtime assemblies are extracted at runtime)
+            // --- Collect: currently loaded assemblies (scanner's AppDomain — fallback) ---
             try
             {
                 var added = 0;
@@ -283,7 +301,7 @@ namespace DotNetAssembliesApiExtractor.Services
                         var loc = a.Location;
                         if (!string.IsNullOrEmpty(loc) && File.Exists(loc))
                         {
-                            paths.Add(loc);
+                            fallbackPaths.Add(loc);
                             added++;
                         }
                     }
@@ -292,14 +310,14 @@ namespace DotNetAssembliesApiExtractor.Services
                         Console.Error.WriteLine($"Error adding loaded assembly '{a.FullName}': {ex.Message}");
                     }
                 }
-                if (_verbose) Console.WriteLine($"  [AppDomain] Added {added} assemblies from currently loaded AppDomain.");
+                if (_verbose) Console.WriteLine($"  [AppDomain] Added {added} assemblies from scanner's AppDomain (fallback priority).");
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Error enumerating loaded assemblies: {ex.Message}");
             }
 
-            // 6) fallback: installed .NET Core/5+ runtimes (essential for single-file publish where TPA/runtime dir are unavailable)
+            // --- Collect: installed .NET Core/5+ runtimes (fallback) ---
             try
             {
                 var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
@@ -312,7 +330,7 @@ namespace DotNetAssembliesApiExtractor.Services
                     if (latestRuntime != null)
                     {
                         var files = GetAssemblyFiles(latestRuntime);
-                        paths.AddRange(files);
+                        fallbackPaths.AddRange(files);
                         if (_verbose) Console.WriteLine($"  [NetCoreFallback] Added {files.Length} assemblies from installed runtime: {latestRuntime}");
                     }
                     else
@@ -330,7 +348,7 @@ namespace DotNetAssembliesApiExtractor.Services
                 Console.Error.WriteLine($"Error loading .NET Core runtime assemblies: {ex.Message}");
             }
 
-            // 7) fallback: .NET Framework assemblies from Windows directory (for mscorlib.dll, WPF, etc. when analyzing .NET Framework assemblies)
+            // --- Collect: .NET Framework assemblies from Windows directory ---
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 try
@@ -349,8 +367,8 @@ namespace DotNetAssembliesApiExtractor.Services
                         if (Directory.Exists(dir))
                         {
                             var files = GetAssemblyFiles(dir);
-                            paths.AddRange(files);
-                            if (_verbose) Console.WriteLine($"  [NetFxFallback] Added {files.Length} assemblies from: {dir}");
+                            netFxSysPaths.AddRange(files);
+                            if (_verbose) Console.WriteLine($"  [NetFxSystem] Added {files.Length} assemblies from: {dir}");
 
                             // include subdirectories (e.g. WPF subfolder contains PresentationFramework.dll)
                             foreach (var subDir in Directory.GetDirectories(dir))
@@ -358,8 +376,8 @@ namespace DotNetAssembliesApiExtractor.Services
                                 var subFiles = GetAssemblyFiles(subDir);
                                 if (subFiles.Length > 0)
                                 {
-                                    paths.AddRange(subFiles);
-                                    if (_verbose) Console.WriteLine($"  [NetFxFallback] Added {subFiles.Length} assemblies from: {subDir}");
+                                    netFxSysPaths.AddRange(subFiles);
+                                    if (_verbose) Console.WriteLine($"  [NetFxSystem] Added {subFiles.Length} assemblies from: {subDir}");
                                 }
                             }
 
@@ -369,7 +387,7 @@ namespace DotNetAssembliesApiExtractor.Services
                     }
                     if (!found)
                     {
-                        if (_verbose) Console.WriteLine("  [NetFxFallback] No .NET Framework directory found.");
+                        if (_verbose) Console.WriteLine("  [NetFxSystem] No .NET Framework directory found.");
                     }
                 }
                 catch (Exception ex)
@@ -378,29 +396,51 @@ namespace DotNetAssembliesApiExtractor.Services
                 }
             }
 
-            // 8) ensure the analyzed assembly itself is present
-            paths.Add(assemblyPath);
-
-            // dedupe by file name (assembly simple name) to avoid loading same identity twice
+            // --- Build dedup map from lowest to highest priority (last write wins) ---
+            // Priority mirrors runtime resolution order:
+            //   P1 fallback (scanner's TPA/runtime/AppDomain — may not match target)
+            //   P2 .NET Framework system dir (only meaningful for .NET Fx targets)
+            //   P3 TFM reference assemblies (matching target's framework version)
+            //   P4 user-provided --refsDir
+            //   P5 local assemblies next to target (highest — like runtime probing)
+            var totalCandidates = fallbackPaths.Count + netFxSysPaths.Count
+                + tfmRefPaths.Count + userRefPaths.Count + localPaths.Count + 1;
             var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var p in paths)
+
+            // P1 (lowest): scanner's runtime + generic fallbacks
+            AddToResolverMap(map, fallbackPaths);
+
+            // P2: .NET Framework system assemblies
+            // For .NET Fx targets these override scanner's .NET Core stubs;
+            // for .NET Core targets they sit below TFM refs and local, so they only fill gaps.
+            if (isNetFramework)
             {
-                try
-                {
-                    var name = Path.GetFileName(p);
-                    if (string.IsNullOrEmpty(name)) continue;
-                    if (!map.ContainsKey(name))
-                    {
-                        map[name] = p;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"Error processing path '{p}': {ex.Message}");
-                }
+                AddToResolverMap(map, netFxSysPaths);
+                if (_verbose) Console.WriteLine("  [Priority] .NET Framework target: fallback < NetFx < TFM < UserRef < Local");
+            }
+            else
+            {
+                // For .NET Core targets, .NET Fx system paths are added at lowest priority
+                // (below scanner fallbacks which are at least .NET Core assemblies).
+                // Re-insert fallbacks after netFx to ensure .NET Core fallbacks win over .NET Fx.
+                var mapBackup = new Dictionary<string, string>(map, StringComparer.OrdinalIgnoreCase);
+                AddToResolverMap(map, netFxSysPaths);
+                // Restore scanner fallback paths on top (they are .NET Core, more relevant)
+                foreach (var kvp in mapBackup)
+                    map[kvp.Key] = kvp.Value;
+                if (_verbose) Console.WriteLine("  [Priority] .NET Core target: NetFx < fallback < TFM < UserRef < Local");
             }
 
-            // Ensure the assembly being analyzed is present and wins for its file name
+            // P3: TFM reference assemblies (correct target runtime version)
+            AddToResolverMap(map, tfmRefPaths);
+
+            // P4: user-provided reference assemblies
+            AddToResolverMap(map, userRefPaths);
+
+            // P5 (highest): local assemblies next to target — mimics runtime probing
+            AddToResolverMap(map, localPaths);
+
+            // The analyzed assembly itself always wins
             try
             {
                 var asmName = Path.GetFileName(assemblyPath);
@@ -412,8 +452,29 @@ namespace DotNetAssembliesApiExtractor.Services
                 Console.Error.WriteLine($"Error ensuring analyzed assembly path: {ex.Message}");
             }
 
-            if (_verbose) Console.WriteLine($"  [Summary] Total unique resolver assemblies: {map.Count} (from {paths.Count} candidates before dedup).");
+            if (_verbose) Console.WriteLine($"  [Summary] Total unique resolver assemblies: {map.Count} (from {totalCandidates} candidates before dedup).");
             return map.Values.ToList();
+        }
+
+        /// <summary>
+        /// Adds paths to the resolver map. Later calls overwrite earlier ones for the same file name,
+        /// implementing priority-based resolution (last write wins = highest priority).
+        /// </summary>
+        private static void AddToResolverMap(Dictionary<string, string> map, List<string> paths)
+        {
+            foreach (var p in paths)
+            {
+                try
+                {
+                    var name = Path.GetFileName(p);
+                    if (!string.IsNullOrEmpty(name))
+                        map[name] = p;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error processing path '{p}': {ex.Message}");
+                }
+            }
         }
 
         private static string? GetTargetFrameworkFromAssembly(string assemblyPath)
