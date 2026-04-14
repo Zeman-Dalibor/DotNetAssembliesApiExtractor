@@ -120,20 +120,37 @@ namespace DotNetAssembliesApiExtractor.Services
                         Methods = new List<MethodDto>()
                     };
 
-                    var methods = t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
+                    MethodInfo[] methods;
+                    try
+                    {
+                        methods = t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"  Warning: cannot enumerate methods for type '{t.FullName}': {ex.Message}");
+                        methods = Array.Empty<MethodInfo>();
+                    }
+
                     foreach (var m in methods)
                     {
-                        var methodDto = new MethodDto
+                        try
                         {
-                            Name = m.Name,
-                            ReturnType = m.ReturnType?.FullName,
-                            IsPublic = m.IsPublic,
-                            IsStatic = m.IsStatic,
-                            IsAbstract = m.IsAbstract,
-                            IsVirtual = m.IsVirtual,
-                            Parameters = m.GetParameters().Select(p => new ParameterDto { Name = p.Name, Type = p.ParameterType?.FullName }).ToList()
-                        };
-                        typeDto.Methods.Add(methodDto);
+                            var methodDto = new MethodDto
+                            {
+                                Name = m.Name,
+                                ReturnType = SafeGetTypeName(() => m.ReturnType),
+                                IsPublic = m.IsPublic,
+                                IsStatic = m.IsStatic,
+                                IsAbstract = m.IsAbstract,
+                                IsVirtual = m.IsVirtual,
+                                Parameters = SafeGetParameters(m)
+                            };
+                            typeDto.Methods.Add(methodDto);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"  Warning: skipping method '{m.Name}' in type '{t.FullName}': {ex.Message}");
+                        }
                     }
 
                     dto.Types.Add(typeDto);
@@ -661,6 +678,56 @@ namespace DotNetAssembliesApiExtractor.Services
             var result = new string[dlls.Length + exes.Length];
             dlls.CopyTo(result, 0);
             exes.CopyTo(result, dlls.Length);
+            return result;
+        }
+
+        /// <summary>
+        /// Safely retrieves a type's FullName via a delegate. MetadataLoadContext can throw
+        /// (e.g. TypeLoadException for circular type forwarding) when resolving certain types.
+        /// Returns null on failure instead of crashing the process.
+        /// </summary>
+        private static string? SafeGetTypeName(Func<Type?> typeAccessor)
+        {
+            try
+            {
+                return typeAccessor()?.FullName;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Safely retrieves method parameters. Each parameter's type is resolved individually
+        /// to avoid a single unresolvable type from discarding the entire parameter list.
+        /// </summary>
+        private static List<ParameterDto> SafeGetParameters(MethodInfo method)
+        {
+            ParameterInfo[] parameters;
+            try
+            {
+                parameters = method.GetParameters();
+            }
+            catch (Exception)
+            {
+                return new List<ParameterDto>();
+            }
+
+            var result = new List<ParameterDto>(parameters.Length);
+            foreach (var p in parameters)
+            {
+                string? typeName = null;
+                try
+                {
+                    typeName = p.ParameterType?.FullName;
+                }
+                catch (Exception)
+                {
+                    // Type resolution failed (e.g. circular type forwarding) — leave as null
+                }
+                result.Add(new ParameterDto { Name = p.Name, Type = typeName });
+            }
             return result;
         }
 
