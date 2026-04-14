@@ -1,5 +1,9 @@
 <Solution>
   <Project Path="DotNetAssembliesApiExtractor/DotNetAssembliesApiExtractor.csproj" />
+  <Folder Name="/TestAssemblies/" />
+  <Folder Name="/TestAssemblies/Net48Wpf/">
+    <Project Path="TestAssemblies/Net48Wpf/TestAssemblies.Net48Wpf.csproj" />
+  </Folder>
   <Project Path="DotNetAssembliesApiExtractor.Tests/DotNetAssembliesApiExtractor.Tests.csproj" />
   <Project Path="TestAssemblies/Net35/TestAssemblies.Net35.csproj" Id="5d8d6f86-5b12-4e8f-93e1-8d1a4c9f6b1a" />
   <Project Path="TestAssemblies/Net45/TestAssemblies.Net45.csproj" />
