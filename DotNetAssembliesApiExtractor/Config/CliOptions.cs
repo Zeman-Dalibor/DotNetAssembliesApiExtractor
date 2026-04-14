@@ -8,12 +8,14 @@ namespace DotNetAssembliesApiExtractor.Config
         public string ScanDir { get; }
         public string OutputDir { get; }
         public string? ReferenceAssembliesDir { get; }
+        public bool Verbose { get; }
 
-        private CliOptions(string scanDir, string outputDir, string? referenceAssembliesDir)
+        private CliOptions(string scanDir, string outputDir, string? referenceAssembliesDir, bool verbose)
         {
             ScanDir = scanDir;
             OutputDir = outputDir;
             ReferenceAssembliesDir = referenceAssembliesDir;
+            Verbose = verbose;
         }
 
         public static bool TryParse(string[] args, [NotNullWhen(true)] out CliOptions? options)
@@ -22,6 +24,7 @@ namespace DotNetAssembliesApiExtractor.Config
             string? scanDir = null;
             string? outputDir = null;
             string? refsDir = null;
+            bool verbose = false;
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -47,6 +50,10 @@ namespace DotNetAssembliesApiExtractor.Config
                     else if (i + 1 < args.Length)
                         refsDir = args[++i];
                 }
+                else if (a.Equals("--verbose", StringComparison.OrdinalIgnoreCase))
+                {
+                    verbose = true;
+                }
                 else if (a == "-h" || a == "--help")
                 {
                     options = null;
@@ -57,13 +64,13 @@ namespace DotNetAssembliesApiExtractor.Config
             if (string.IsNullOrEmpty(scanDir) || string.IsNullOrEmpty(outputDir))
                 return false;
 
-            options = new CliOptions(scanDir!, outputDir!, refsDir);
+            options = new CliOptions(scanDir!, outputDir!, refsDir, verbose);
             return true;
         }
 
         public static void PrintUsage()
         {
-            Console.WriteLine("Usage: DotNetAssembliesApiExtractor --scanDir <dir> --outputDir <dir> [--refsDir <dir>]");
+            Console.WriteLine("Usage: DotNetAssembliesApiExtractor --scanDir <dir> --outputDir <dir> [--refsDir <dir>] [--verbose]");
         }
     }
 }

@@ -15,10 +15,12 @@ namespace DotNetAssembliesApiExtractor.Services
     internal class AssemblyScanner
     {
         private readonly string? _referenceAssembliesDir;
+        private readonly bool _verbose;
 
-        public AssemblyScanner(string? referenceAssembliesDir = null)
+        public AssemblyScanner(string? referenceAssembliesDir = null, bool verbose = false)
         {
             _referenceAssembliesDir = referenceAssembliesDir;
+            _verbose = verbose;
         }
 
         public IEnumerable<Models.AssemblyDto> ScanDirectory(string scanDir)
@@ -149,7 +151,7 @@ namespace DotNetAssembliesApiExtractor.Services
         private List<string> CollectResolverPaths(string assemblyPath)
         {
             var paths = new List<string>();
-            Console.WriteLine($"Collecting resolver paths for: {assemblyPath}");
+            if (_verbose) Console.WriteLine($"Collecting resolver paths for: {assemblyPath}");
 
             // 0) include trusted platform assemblies (TPA) so the core assembly can be resolved
             try
@@ -174,11 +176,11 @@ namespace DotNetAssembliesApiExtractor.Services
                             Console.Error.WriteLine($"Error adding TPA entry '{e}': {ex.Message}");
                         }
                     }
-                    Console.WriteLine($"  [TPA] Added {added} assemblies from Trusted Platform Assemblies.");
+                    if (_verbose) Console.WriteLine($"  [TPA] Added {added} assemblies from Trusted Platform Assemblies.");
                 }
                 else
                 {
-                    Console.WriteLine("  [TPA] No Trusted Platform Assemblies found.");
+                    if (_verbose) Console.WriteLine("  [TPA] No Trusted Platform Assemblies found.");
                 }
             }
             catch (Exception ex)
@@ -191,13 +193,13 @@ namespace DotNetAssembliesApiExtractor.Services
             {
                 if (!string.IsNullOrEmpty(_referenceAssembliesDir) && Directory.Exists(_referenceAssembliesDir))
                 {
-                    var files = Directory.GetFiles(_referenceAssembliesDir, "*.dll");
+                    var files = GetAssemblyFiles(_referenceAssembliesDir);
                     paths.AddRange(files);
-                    Console.WriteLine($"  [UserRef] Added {files.Length} assemblies from user-provided directory: {_referenceAssembliesDir}");
+                    if (_verbose) Console.WriteLine($"  [UserRef] Added {files.Length} assemblies from user-provided directory: {_referenceAssembliesDir}");
                 }
                 else
                 {
-                    Console.WriteLine("  [UserRef] No user-provided reference assemblies directory configured or found.");
+                    if (_verbose) Console.WriteLine("  [UserRef] No user-provided reference assemblies directory configured or found.");
                 }
             }
             catch (Exception ex)
@@ -211,22 +213,22 @@ namespace DotNetAssembliesApiExtractor.Services
                 var tfm = GetTargetFrameworkFromAssembly(assemblyPath);
                 if (!string.IsNullOrEmpty(tfm))
                 {
-                    Console.WriteLine($"  [TFM] Detected target framework: {tfm}");
+                    if (_verbose) Console.WriteLine($"  [TFM] Detected target framework: {tfm}");
                     var tfmPaths = FindReferenceAssembliesForTfm(tfm);
                     if (tfmPaths != null && tfmPaths.Any())
                     {
                         var tfmList = tfmPaths.ToList();
                         paths.AddRange(tfmList);
-                        Console.WriteLine($"  [TFM] Added {tfmList.Count} assemblies for TFM '{tfm}'.");
+                        if (_verbose) Console.WriteLine($"  [TFM] Added {tfmList.Count} assemblies for TFM '{tfm}'.");
                     }
                     else
                     {
-                        Console.WriteLine($"  [TFM] No reference assemblies found for TFM '{tfm}'.");
+                        if (_verbose) Console.WriteLine($"  [TFM] No reference assemblies found for TFM '{tfm}'.");
                     }
                 }
                 else
                 {
-                    Console.WriteLine("  [TFM] Could not detect target framework from assembly.");
+                    if (_verbose) Console.WriteLine("  [TFM] Could not detect target framework from assembly.");
                 }
             }
             catch (Exception ex)
@@ -240,13 +242,13 @@ namespace DotNetAssembliesApiExtractor.Services
                 var runtimeDir = RuntimeEnvironment.GetRuntimeDirectory();
                 if (!string.IsNullOrEmpty(runtimeDir) && Directory.Exists(runtimeDir))
                 {
-                    var files = Directory.GetFiles(runtimeDir, "*.dll");
+                    var files = GetAssemblyFiles(runtimeDir);
                     paths.AddRange(files);
-                    Console.WriteLine($"  [Runtime] Added {files.Length} assemblies from runtime directory: {runtimeDir}");
+                    if (_verbose) Console.WriteLine($"  [Runtime] Added {files.Length} assemblies from runtime directory: {runtimeDir}");
                 }
                 else
                 {
-                    Console.WriteLine("  [Runtime] Runtime directory not found.");
+                    if (_verbose) Console.WriteLine("  [Runtime] Runtime directory not found.");
                 }
             }
             catch (Exception ex)
@@ -260,9 +262,9 @@ namespace DotNetAssembliesApiExtractor.Services
                 var assemblyDir = Path.GetDirectoryName(assemblyPath);
                 if (!string.IsNullOrEmpty(assemblyDir) && Directory.Exists(assemblyDir))
                 {
-                    var files = Directory.GetFiles(assemblyDir, "*.dll");
+                    var files = GetAssemblyFiles(assemblyDir);
                     paths.AddRange(files);
-                    Console.WriteLine($"  [SiblingDir] Added {files.Length} assemblies from target assembly directory: {assemblyDir}");
+                    if (_verbose) Console.WriteLine($"  [SiblingDir] Added {files.Length} assemblies from target assembly directory: {assemblyDir}");
                 }
             }
             catch (Exception ex)
@@ -290,7 +292,7 @@ namespace DotNetAssembliesApiExtractor.Services
                         Console.Error.WriteLine($"Error adding loaded assembly '{a.FullName}': {ex.Message}");
                     }
                 }
-                Console.WriteLine($"  [AppDomain] Added {added} assemblies from currently loaded AppDomain.");
+                if (_verbose) Console.WriteLine($"  [AppDomain] Added {added} assemblies from currently loaded AppDomain.");
             }
             catch (Exception ex)
             {
@@ -309,18 +311,18 @@ namespace DotNetAssembliesApiExtractor.Services
                         .FirstOrDefault();
                     if (latestRuntime != null)
                     {
-                        var files = Directory.GetFiles(latestRuntime, "*.dll");
+                        var files = GetAssemblyFiles(latestRuntime);
                         paths.AddRange(files);
-                        Console.WriteLine($"  [NetCoreFallback] Added {files.Length} assemblies from installed runtime: {latestRuntime}");
+                        if (_verbose) Console.WriteLine($"  [NetCoreFallback] Added {files.Length} assemblies from installed runtime: {latestRuntime}");
                     }
                     else
                     {
-                        Console.WriteLine("  [NetCoreFallback] No .NET Core runtime directories found.");
+                        if (_verbose) Console.WriteLine("  [NetCoreFallback] No .NET Core runtime directories found.");
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"  [NetCoreFallback] .NET Core shared directory not found: {netCoreAppDir}");
+                    if (_verbose) Console.WriteLine($"  [NetCoreFallback] .NET Core shared directory not found: {netCoreAppDir}");
                 }
             }
             catch (Exception ex)
@@ -348,14 +350,14 @@ namespace DotNetAssembliesApiExtractor.Services
                         if (File.Exists(mscorlib))
                         {
                             paths.Add(mscorlib);
-                            Console.WriteLine($"  [NetFxFallback] Added mscorlib.dll from: {mscorlib}");
+                            if (_verbose) Console.WriteLine($"  [NetFxFallback] Added mscorlib.dll from: {mscorlib}");
                             found = true;
                             break;
                         }
                     }
                     if (!found)
                     {
-                        Console.WriteLine("  [NetFxFallback] mscorlib.dll not found in any .NET Framework directory.");
+                        if (_verbose) Console.WriteLine("  [NetFxFallback] mscorlib.dll not found in any .NET Framework directory.");
                     }
                 }
                 catch (Exception ex)
@@ -378,7 +380,7 @@ namespace DotNetAssembliesApiExtractor.Services
                     if (!map.ContainsKey(name))
                     {
                         map[name] = p;
-                      }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -398,7 +400,7 @@ namespace DotNetAssembliesApiExtractor.Services
                 Console.Error.WriteLine($"Error ensuring analyzed assembly path: {ex.Message}");
             }
 
-            Console.WriteLine($"  [Summary] Total unique resolver assemblies: {map.Count} (from {paths.Count} candidates before dedup).");
+            if (_verbose) Console.WriteLine($"  [Summary] Total unique resolver assemblies: {map.Count} (from {paths.Count} candidates before dedup).");
             return map.Values.ToList();
         }
 
@@ -538,14 +540,14 @@ namespace DotNetAssembliesApiExtractor.Services
                     {
                         var candidate = Path.Combine(baseDir, version);
                         if (Directory.Exists(candidate))
-                            return Directory.GetFiles(candidate, "*.dll");
+                            return GetAssemblyFiles(candidate);
                     }
                     if (Directory.Exists(baseDir))
                     {
                         var dirs = Directory.GetDirectories(baseDir).OrderByDescending(d => d).ToList();
                         foreach (var d in dirs)
                         {
-                            var files = Directory.GetFiles(d, "*.dll");
+                            var files = GetAssemblyFiles(d);
                             if (files.Length > 0) return files;
                         }
                     }
@@ -558,14 +560,14 @@ namespace DotNetAssembliesApiExtractor.Services
                     {
                         var candidate = Path.Combine(baseDir, $"v{version}");
                         if (Directory.Exists(candidate))
-                            return Directory.GetFiles(candidate, "*.dll");
+                            return GetAssemblyFiles(candidate);
                     }
                     if (Directory.Exists(baseDir))
                     {
                         var dirs = Directory.GetDirectories(baseDir).OrderByDescending(d => d).ToList();
                         foreach (var d in dirs)
                         {
-                            var files = Directory.GetFiles(d, "*.dll");
+                            var files = GetAssemblyFiles(d);
                             if (files.Length > 0) return files;
                         }
                     }
@@ -577,6 +579,16 @@ namespace DotNetAssembliesApiExtractor.Services
             }
 
             return Enumerable.Empty<string>();
+        }
+
+        private static string[] GetAssemblyFiles(string directory)
+        {
+            var dlls = Directory.GetFiles(directory, "*.dll");
+            var exes = Directory.GetFiles(directory, "*.exe");
+            var result = new string[dlls.Length + exes.Length];
+            dlls.CopyTo(result, 0);
+            exes.CopyTo(result, dlls.Length);
+            return result;
         }
 
         private static string GetTypeKind(Type t)

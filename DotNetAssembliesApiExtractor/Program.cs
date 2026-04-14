@@ -25,11 +25,19 @@ namespace DotNetAssembliesApiExtractor
 
                 Directory.CreateDirectory(options.OutputDir);
 
+                var stdoutLogPath = Path.Combine(options.OutputDir, "stdout.log");
+                var stderrLogPath = Path.Combine(options.OutputDir, "stderr.log");
+
+                using var stdoutTee = new TeeTextWriter(Console.Out, stdoutLogPath);
+                using var stderrTee = new TeeTextWriter(Console.Error, stderrLogPath);
+                Console.SetOut(stdoutTee);
+                Console.SetError(stderrTee);
+
                 Console.WriteLine($"Scanning: {options.ScanDir}");
                 Console.WriteLine($"Output: {options.OutputDir}");
                 Console.WriteLine();
 
-                var scanner = new AssemblyScanner(options.ReferenceAssembliesDir);
+                var scanner = new AssemblyScanner(options.ReferenceAssembliesDir, options.Verbose);
                 var dtos = scanner.ScanDirectory(options.ScanDir);
                 foreach (var dto in dtos)
                 {
