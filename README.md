@@ -27,11 +27,12 @@ or use `publish.bat` file.
 
 ## Usage (CLI)
 
-Usage: DotNetAssembliesApiExtractor.exe --scanDir <dir> --outputDir <dir> [--refsDir <dir>]
+Usage: DotNetAssembliesApiExtractor.exe --scanDir <dir> --outputDir <dir> [--refsDir <dir>] [--verbose]
 
 - `--scanDir` (required): folder to recursively scan for assemblies (.dll/.exe)
 - `--outputDir` (required): folder where resulting JSON files will be written (one JSON per assembly)
 - `--refsDir` (optional): folder with reference assemblies (helps resolving dependencies, e.g. for .NET Framework or specific TFMs)
+- `--verbose` (optional): enables detailed diagnostic output (resolver paths, TFM detection, assembly counts, etc.)
 
 ## Examples
 
