@@ -330,7 +330,7 @@ namespace DotNetAssembliesApiExtractor.Services
                 Console.Error.WriteLine($"Error loading .NET Core runtime assemblies: {ex.Message}");
             }
 
-            // 7) fallback: .NET Framework assemblies from Windows directory (for mscorlib.dll when analyzing .NET Framework assemblies)
+            // 7) fallback: .NET Framework assemblies from Windows directory (for mscorlib.dll, WPF, etc. when analyzing .NET Framework assemblies)
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 try
@@ -346,18 +346,30 @@ namespace DotNetAssembliesApiExtractor.Services
                     var found = false;
                     foreach (var dir in fwDirs)
                     {
-                        var mscorlib = Path.Combine(dir, "mscorlib.dll");
-                        if (File.Exists(mscorlib))
+                        if (Directory.Exists(dir))
                         {
-                            paths.Add(mscorlib);
-                            if (_verbose) Console.WriteLine($"  [NetFxFallback] Added mscorlib.dll from: {mscorlib}");
+                            var files = GetAssemblyFiles(dir);
+                            paths.AddRange(files);
+                            if (_verbose) Console.WriteLine($"  [NetFxFallback] Added {files.Length} assemblies from: {dir}");
+
+                            // include subdirectories (e.g. WPF subfolder contains PresentationFramework.dll)
+                            foreach (var subDir in Directory.GetDirectories(dir))
+                            {
+                                var subFiles = GetAssemblyFiles(subDir);
+                                if (subFiles.Length > 0)
+                                {
+                                    paths.AddRange(subFiles);
+                                    if (_verbose) Console.WriteLine($"  [NetFxFallback] Added {subFiles.Length} assemblies from: {subDir}");
+                                }
+                            }
+
                             found = true;
                             break;
                         }
                     }
                     if (!found)
                     {
-                        if (_verbose) Console.WriteLine("  [NetFxFallback] mscorlib.dll not found in any .NET Framework directory.");
+                        if (_verbose) Console.WriteLine("  [NetFxFallback] No .NET Framework directory found.");
                     }
                 }
                 catch (Exception ex)
