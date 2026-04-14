@@ -17,32 +17,35 @@ namespace DotNetAssembliesApiExtractor
                     return 1;
                 }
 
-                if (!Directory.Exists(options.ScanDir))
+                var scanDir = Path.GetFullPath(options.ScanDir);
+                var outputDir = Path.GetFullPath(options.OutputDir);
+
+                if (!Directory.Exists(scanDir))
                 {
-                    Console.Error.WriteLine($"Scan directory not found: {options.ScanDir}");
+                    Console.Error.WriteLine($"Scan directory not found: {scanDir}");
                     return 2;
                 }
 
-                Directory.CreateDirectory(options.OutputDir);
+                Directory.CreateDirectory(outputDir);
 
-                var stdoutLogPath = Path.Combine(options.OutputDir, "stdout.log");
-                var stderrLogPath = Path.Combine(options.OutputDir, "stderr.log");
+                var stdoutLogPath = Path.Combine(outputDir, "stdout.log");
+                var stderrLogPath = Path.Combine(outputDir, "stderr.log");
 
                 using var stdoutTee = new TeeTextWriter(Console.Out, stdoutLogPath);
                 using var stderrTee = new TeeTextWriter(Console.Error, stderrLogPath);
                 Console.SetOut(stdoutTee);
                 Console.SetError(stderrTee);
 
-                Console.WriteLine($"Scanning: {options.ScanDir}");
-                Console.WriteLine($"Output: {options.OutputDir}");
+                Console.WriteLine($"Scanning: {scanDir}");
+                Console.WriteLine($"Output: {outputDir}");
                 Console.WriteLine();
 
                 var scanner = new AssemblyScanner(options.ReferenceAssembliesDir, options.Verbose);
-                var dtos = scanner.ScanDirectory(options.ScanDir);
+                var dtos = scanner.ScanDirectory(scanDir);
                 foreach (var dto in dtos)
                 {
                     var fileName = (dto.FileName ?? "unknown") + ".json";
-                    var outPath = Path.Combine(options.OutputDir, fileName);
+                    var outPath = Path.Combine(outputDir, fileName);
                     dto.SaveAsJson(outPath);
                     Console.WriteLine($"Wrote: {outPath}");
                 }

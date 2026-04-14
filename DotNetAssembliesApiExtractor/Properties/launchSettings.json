@@ -2,7 +2,7 @@
   "profiles": {
     "DotNetAssembliesApiExtractor": {
       "commandName": "Project",
-      "commandLineArgs": " --scanDir \"TestAssemblies\\Net10\\bin\\Debug\\net10.0\" --outputDir \"\\bin\\Debug\\net6.0\\report\""
+      "commandLineArgs": "--scanDir \"..\\..\\..\\..\\TestAssemblies\\Net48Wpf\\bin\\Debug\\net48\" --outputDir \"report\" --verbose"
     }
   }
 }
