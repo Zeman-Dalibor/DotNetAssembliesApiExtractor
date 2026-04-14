@@ -38,6 +38,7 @@ namespace DotNetAssembliesApiExtractor.Services
                 if (!IsDotNetAssembly(filePath))
                 {
                     Console.WriteLine($"Skipping non-.NET file: {filePath}");
+                    Console.WriteLine();
                     return null;
                 }
 
@@ -45,6 +46,7 @@ namespace DotNetAssembliesApiExtractor.Services
                 if (dto == null)
                 {
                     Console.WriteLine($"Skipping (analysis failed): {filePath}");
+                    Console.WriteLine();
                     return null;
                 }
 
@@ -53,6 +55,7 @@ namespace DotNetAssembliesApiExtractor.Services
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Error processing '{filePath}': {ex.Message}");
+                Console.WriteLine();
                 return null;
             }
         }
@@ -146,6 +149,7 @@ namespace DotNetAssembliesApiExtractor.Services
         private List<string> CollectResolverPaths(string assemblyPath)
         {
             var paths = new List<string>();
+            Console.WriteLine($"Collecting resolver paths for: {assemblyPath}");
 
             // 0) include trusted platform assemblies (TPA) so the core assembly can be resolved
             try
@@ -154,26 +158,52 @@ namespace DotNetAssembliesApiExtractor.Services
                 if (!string.IsNullOrEmpty(tpa))
                 {
                     var entries = tpa.Split(Path.PathSeparator);
+                    var added = 0;
                     foreach (var e in entries)
                     {
                         try
                         {
                             if (!string.IsNullOrEmpty(e) && File.Exists(e))
+                            {
                                 paths.Add(e);
+                                added++;
+                            }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"Error adding TPA entry '{e}': {ex.Message}");
+                        }
                     }
+                    Console.WriteLine($"  [TPA] Added {added} assemblies from Trusted Platform Assemblies.");
+                }
+                else
+                {
+                    Console.WriteLine("  [TPA] No Trusted Platform Assemblies found.");
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error loading TRUSTED_PLATFORM_ASSEMBLIES: {ex.Message}");
+            }
 
             // 1) user-provided reference assemblies directory
             try
             {
                 if (!string.IsNullOrEmpty(_referenceAssembliesDir) && Directory.Exists(_referenceAssembliesDir))
-                    paths.AddRange(Directory.GetFiles(_referenceAssembliesDir, "*.dll"));
+                {
+                    var files = Directory.GetFiles(_referenceAssembliesDir, "*.dll");
+                    paths.AddRange(files);
+                    Console.WriteLine($"  [UserRef] Added {files.Length} assemblies from user-provided directory: {_referenceAssembliesDir}");
+                }
+                else
+                {
+                    Console.WriteLine("  [UserRef] No user-provided reference assemblies directory configured or found.");
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error loading reference assemblies from '{_referenceAssembliesDir}': {ex.Message}");
+            }
 
             // 2) try to detect target framework from the assembly and find reference assemblies
             try
@@ -181,46 +211,91 @@ namespace DotNetAssembliesApiExtractor.Services
                 var tfm = GetTargetFrameworkFromAssembly(assemblyPath);
                 if (!string.IsNullOrEmpty(tfm))
                 {
+                    Console.WriteLine($"  [TFM] Detected target framework: {tfm}");
                     var tfmPaths = FindReferenceAssembliesForTfm(tfm);
                     if (tfmPaths != null && tfmPaths.Any())
-                        paths.AddRange(tfmPaths);
+                    {
+                        var tfmList = tfmPaths.ToList();
+                        paths.AddRange(tfmList);
+                        Console.WriteLine($"  [TFM] Added {tfmList.Count} assemblies for TFM '{tfm}'.");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  [TFM] No reference assemblies found for TFM '{tfm}'.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("  [TFM] Could not detect target framework from assembly.");
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error detecting target framework: {ex.Message}");
+            }
 
             // 3) runtime directory (if present)
             try
             {
                 var runtimeDir = RuntimeEnvironment.GetRuntimeDirectory();
                 if (!string.IsNullOrEmpty(runtimeDir) && Directory.Exists(runtimeDir))
-                    paths.AddRange(Directory.GetFiles(runtimeDir, "*.dll"));
+                {
+                    var files = Directory.GetFiles(runtimeDir, "*.dll");
+                    paths.AddRange(files);
+                    Console.WriteLine($"  [Runtime] Added {files.Length} assemblies from runtime directory: {runtimeDir}");
+                }
+                else
+                {
+                    Console.WriteLine("  [Runtime] Runtime directory not found.");
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error loading runtime directory assemblies: {ex.Message}");
+            }
 
             // 4) assemblies next to the target assembly
             try
             {
                 var assemblyDir = Path.GetDirectoryName(assemblyPath);
                 if (!string.IsNullOrEmpty(assemblyDir) && Directory.Exists(assemblyDir))
-                    paths.AddRange(Directory.GetFiles(assemblyDir, "*.dll"));
+                {
+                    var files = Directory.GetFiles(assemblyDir, "*.dll");
+                    paths.AddRange(files);
+                    Console.WriteLine($"  [SiblingDir] Added {files.Length} assemblies from target assembly directory: {assemblyDir}");
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error loading assemblies from target directory: {ex.Message}");
+            }
 
             // 5) currently loaded assemblies (useful for single-file publish where runtime assemblies are extracted at runtime)
             try
             {
+                var added = 0;
                 foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
                 {
                     try
                     {
                         var loc = a.Location;
                         if (!string.IsNullOrEmpty(loc) && File.Exists(loc))
+                        {
                             paths.Add(loc);
+                            added++;
+                        }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error adding loaded assembly '{a.FullName}': {ex.Message}");
+                    }
                 }
+                Console.WriteLine($"  [AppDomain] Added {added} assemblies from currently loaded AppDomain.");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error enumerating loaded assemblies: {ex.Message}");
+            }
 
             // 6) fallback: installed .NET Core/5+ runtimes (essential for single-file publish where TPA/runtime dir are unavailable)
             try
@@ -233,10 +308,25 @@ namespace DotNetAssembliesApiExtractor.Services
                         .OrderByDescending(d => d)
                         .FirstOrDefault();
                     if (latestRuntime != null)
-                        paths.AddRange(Directory.GetFiles(latestRuntime, "*.dll"));
+                    {
+                        var files = Directory.GetFiles(latestRuntime, "*.dll");
+                        paths.AddRange(files);
+                        Console.WriteLine($"  [NetCoreFallback] Added {files.Length} assemblies from installed runtime: {latestRuntime}");
+                    }
+                    else
+                    {
+                        Console.WriteLine("  [NetCoreFallback] No .NET Core runtime directories found.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"  [NetCoreFallback] .NET Core shared directory not found: {netCoreAppDir}");
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error loading .NET Core runtime assemblies: {ex.Message}");
+            }
 
             // 7) fallback: .NET Framework assemblies from Windows directory (for mscorlib.dll when analyzing .NET Framework assemblies)
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -251,17 +341,27 @@ namespace DotNetAssembliesApiExtractor.Services
                         Path.Combine(winDir, "Microsoft.NET", "Framework64", "v2.0.50727"),
                         Path.Combine(winDir, "Microsoft.NET", "Framework", "v2.0.50727"),
                     };
+                    var found = false;
                     foreach (var dir in fwDirs)
                     {
                         var mscorlib = Path.Combine(dir, "mscorlib.dll");
                         if (File.Exists(mscorlib))
                         {
                             paths.Add(mscorlib);
+                            Console.WriteLine($"  [NetFxFallback] Added mscorlib.dll from: {mscorlib}");
+                            found = true;
                             break;
                         }
                     }
+                    if (!found)
+                    {
+                        Console.WriteLine("  [NetFxFallback] mscorlib.dll not found in any .NET Framework directory.");
+                    }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error loading .NET Framework assemblies: {ex.Message}");
+                }
             }
 
             // 8) ensure the analyzed assembly itself is present
@@ -278,9 +378,12 @@ namespace DotNetAssembliesApiExtractor.Services
                     if (!map.ContainsKey(name))
                     {
                         map[name] = p;
-                    }
+                      }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error processing path '{p}': {ex.Message}");
+                }
             }
 
             // Ensure the assembly being analyzed is present and wins for its file name
@@ -290,8 +393,12 @@ namespace DotNetAssembliesApiExtractor.Services
                 if (!string.IsNullOrEmpty(asmName))
                     map[asmName] = assemblyPath;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error ensuring analyzed assembly path: {ex.Message}");
+            }
 
+            Console.WriteLine($"  [Summary] Total unique resolver assemblies: {map.Count} (from {paths.Count} candidates before dedup).");
             return map.Values.ToList();
         }
 
@@ -320,7 +427,10 @@ namespace DotNetAssembliesApiExtractor.Services
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error reading target framework from '{assemblyPath}': {ex.Message}");
+            }
 
             return null;
         }
@@ -358,7 +468,10 @@ namespace DotNetAssembliesApiExtractor.Services
                     return string.IsNullOrEmpty(ns) ? name : ns + "." + name;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error reading attribute type full name: {ex.Message}");
+            }
 
             return string.Empty;
         }
@@ -458,7 +571,10 @@ namespace DotNetAssembliesApiExtractor.Services
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error finding reference assemblies for TFM '{tfm}': {ex.Message}");
+            }
 
             return Enumerable.Empty<string>();
         }
