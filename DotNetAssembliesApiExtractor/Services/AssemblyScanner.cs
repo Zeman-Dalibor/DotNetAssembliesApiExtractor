@@ -194,6 +194,12 @@ namespace DotNetAssembliesApiExtractor.Services
             try { detectedTfm = GetTargetFrameworkFromAssembly(assemblyPath); } catch { }
             var isNetFramework = !string.IsNullOrEmpty(detectedTfm) &&
                 detectedTfm!.StartsWith(".NETFramework", StringComparison.OrdinalIgnoreCase);
+            // Many .NET Framework assemblies (especially 3rd-party) lack [TargetFramework].
+            // Fall back to checking whether the assembly references mscorlib — a reliable .NET Fx indicator.
+            if (!isNetFramework && string.IsNullOrEmpty(detectedTfm))
+            {
+                try { isNetFramework = ReferencesAssembly(assemblyPath, "mscorlib"); } catch { }
+            }
             if (_verbose) Console.WriteLine($"  [TFM] Detected: {detectedTfm ?? "(none)"}, isNetFramework={isNetFramework}");
 
             // Collect paths into priority groups.
@@ -414,6 +420,41 @@ namespace DotNetAssembliesApiExtractor.Services
                 Console.Error.WriteLine($"Error loading .NET Core runtime assemblies: {ex.Message}");
             }
 
+            // --- Collect: Windows Desktop (WPF/WinForms) runtime assemblies ---
+            // Microsoft.WindowsDesktop.App contains full WPF assemblies (WindowsBase with
+            // DependencyObject, PresentationFramework, etc.). The stubs in Microsoft.NETCore.App
+            // only type-forward to these, so without them MetadataLoadContext cannot resolve WPF types.
+            try
+            {
+                var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                var desktopAppDir = Path.Combine(pf, "dotnet", "shared", "Microsoft.WindowsDesktop.App");
+                if (Directory.Exists(desktopAppDir))
+                {
+                    var latestDesktop = Directory.GetDirectories(desktopAppDir)
+                        .OrderByDescending(d => d)
+                        .FirstOrDefault();
+                    if (latestDesktop != null)
+                    {
+                        var files = GetAssemblyFiles(latestDesktop);
+                        // Add AFTER NETCore.App so full WPF assemblies overwrite the stubs
+                        fallbackPaths.AddRange(files);
+                        if (_verbose) Console.WriteLine($"  [WpfDesktop] Added {files.Length} assemblies from installed desktop runtime: {latestDesktop}");
+                    }
+                    else
+                    {
+                        if (_verbose) Console.WriteLine("  [WpfDesktop] No Windows Desktop runtime directories found.");
+                    }
+                }
+                else
+                {
+                    if (_verbose) Console.WriteLine($"  [WpfDesktop] Windows Desktop shared directory not found: {desktopAppDir}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error loading Windows Desktop runtime assemblies: {ex.Message}");
+            }
+
             // --- Collect: .NET Framework assemblies from Windows directory ---
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -541,6 +582,26 @@ namespace DotNetAssembliesApiExtractor.Services
                     Console.Error.WriteLine($"Error processing path '{p}': {ex.Message}");
                 }
             }
+        }
+
+        /// <summary>
+        /// Checks whether the given assembly references a specific assembly by simple name
+        /// (e.g. "mscorlib"). Uses raw PE metadata so it doesn't trigger MetadataLoadContext.
+        /// </summary>
+        private static bool ReferencesAssembly(string assemblyPath, string assemblySimpleName)
+        {
+            using var stream = File.OpenRead(assemblyPath);
+            using var peReader = new PEReader(stream);
+            if (!peReader.HasMetadata) return false;
+            var reader = peReader.GetMetadataReader();
+            foreach (var refHandle in reader.AssemblyReferences)
+            {
+                var asmRef = reader.GetAssemblyReference(refHandle);
+                var name = reader.GetString(asmRef.Name);
+                if (string.Equals(name, assemblySimpleName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -709,13 +770,13 @@ namespace DotNetAssembliesApiExtractor.Services
                     version = versionPart.Split('=')[1].TrimStart('v');
                 }
 
-                if (framework.StartsWith(".NETCoreApp", StringComparison.OrdinalIgnoreCase) || framework.StartsWith(".NET", StringComparison.OrdinalIgnoreCase))
+                if (framework.StartsWith(".NETFramework", StringComparison.OrdinalIgnoreCase))
                 {
-                    var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-                    var baseDir = Path.Combine(pf, "dotnet", "shared", "Microsoft.NETCore.App");
+                    var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+                    var baseDir = Path.Combine(pf86, "Reference Assemblies", "Microsoft", "Framework", ".NETFramework");
                     if (!string.IsNullOrEmpty(version))
                     {
-                        var candidate = Path.Combine(baseDir, version);
+                        var candidate = Path.Combine(baseDir, $"v{version}");
                         if (Directory.Exists(candidate))
                             return GetAssemblyFiles(candidate);
                     }
@@ -729,13 +790,13 @@ namespace DotNetAssembliesApiExtractor.Services
                         }
                     }
                 }
-                else if (framework.StartsWith(".NETFramework", StringComparison.OrdinalIgnoreCase))
+                else if (framework.StartsWith(".NETCoreApp", StringComparison.OrdinalIgnoreCase) || framework.StartsWith(".NET", StringComparison.OrdinalIgnoreCase))
                 {
-                    var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-                    var baseDir = Path.Combine(pf86, "Reference Assemblies", "Microsoft", "Framework", ".NETFramework");
+                    var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                    var baseDir = Path.Combine(pf, "dotnet", "shared", "Microsoft.NETCore.App");
                     if (!string.IsNullOrEmpty(version))
                     {
-                        var candidate = Path.Combine(baseDir, $"v{version}");
+                        var candidate = Path.Combine(baseDir, version);
                         if (Directory.Exists(candidate))
                             return GetAssemblyFiles(candidate);
                     }
