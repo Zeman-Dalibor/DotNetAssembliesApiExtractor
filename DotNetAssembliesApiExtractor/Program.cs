@@ -68,11 +68,10 @@ namespace DotNetAssembliesApiExtractor
                     // Spawn a child process to isolate StackOverflowException crashes
                     var exitCode = RunChildProcess(selfExe, isDotnetRun, filePath, outputDir, options, rawMetadata: false);
 
-                    // StackOverflow exit code (0xC00000FD) — retry with raw MetadataReader fallback
-                    const int STATUS_STACK_OVERFLOW = unchecked((int)0xC00000FD);
-                    if (exitCode == STATUS_STACK_OVERFLOW)
+                    // If MetadataLoadContext failed (any non-zero exit), retry with raw MetadataReader fallback
+                    if (exitCode != 0)
                     {
-                        Console.Error.WriteLine($"StackOverflow in MetadataLoadContext for: {filePath} — retrying with raw MetadataReader...");
+                        Console.Error.WriteLine($"MetadataLoadContext analysis failed (exit code {exitCode}) for: {filePath} — retrying with raw MetadataReader...");
                         exitCode = RunChildProcess(selfExe, isDotnetRun, filePath, outputDir, options, rawMetadata: true);
                     }
 
@@ -108,7 +107,7 @@ namespace DotNetAssembliesApiExtractor
             else
             {
                 var scanner = new AssemblyScanner(options.ReferenceAssembliesDir, options.Verbose);
-                dto = scanner.ProcessSingleFile(filePath);
+                dto = scanner.ProcessFile(filePath);
             }
 
             if (dto == null)
