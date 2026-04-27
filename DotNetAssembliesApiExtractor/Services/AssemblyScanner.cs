@@ -8,6 +8,7 @@ using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Xml;
 using DotNetAssembliesApiExtractor.Models;
 
 namespace DotNetAssembliesApiExtractor.Services
@@ -31,6 +32,25 @@ namespace DotNetAssembliesApiExtractor.Services
                 if (dto != null)
                     yield return dto;
             }
+        }
+
+        public IEnumerable<string> EnumerateAssemblyFiles(string scanDir)
+        {
+            foreach (var file in Directory.EnumerateFiles(scanDir, "*", SearchOption.AllDirectories))
+            {
+                if (!IsDotNetAssembly(file))
+                {
+                    Console.WriteLine($"Skipping non-.NET file: {file}");
+                    Console.WriteLine();
+                    continue;
+                }
+                yield return file;
+            }
+        }
+
+        public Models.AssemblyDto? ProcessSingleFile(string filePath)
+        {
+            return ProcessFile(filePath);
         }
 
         private Models.AssemblyDto? ProcessFile(string filePath)
@@ -307,6 +327,35 @@ namespace DotNetAssembliesApiExtractor.Services
                 Console.Error.WriteLine($"Error loading assemblies from target directory: {ex.Message}");
             }
 
+            // --- Collect: probing privatePath from .config file (standard .NET Framework mechanism) ---
+            try
+            {
+                var configPath = assemblyPath + ".config";
+                if (File.Exists(configPath))
+                {
+                    var assemblyDir = Path.GetDirectoryName(assemblyPath);
+                    var probingPaths = ParseProbingPrivatePaths(configPath);
+                    foreach (var relativePath in probingPaths)
+                    {
+                        var probingDir = Path.Combine(assemblyDir!, relativePath);
+                        if (Directory.Exists(probingDir))
+                        {
+                            var files = GetAssemblyFiles(probingDir);
+                            localPaths.AddRange(files);
+                            if (_verbose) Console.WriteLine($"  [Probing] Added {files.Length} assemblies from privatePath '{relativePath}': {probingDir}");
+                        }
+                        else
+                        {
+                            if (_verbose) Console.WriteLine($"  [Probing] privatePath directory not found: {probingDir}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error parsing .config probing paths: {ex.Message}");
+            }
+
             // --- Collect: currently loaded assemblies (scanner's AppDomain — fallback) ---
             try
             {
@@ -492,6 +541,44 @@ namespace DotNetAssembliesApiExtractor.Services
                     Console.Error.WriteLine($"Error processing path '{p}': {ex.Message}");
                 }
             }
+        }
+
+        /// <summary>
+        /// Parses a .NET Framework .exe.config file and extracts probing privatePath values.
+        /// E.g. &lt;probing privatePath="Common;Plugins" /&gt; → ["Common", "Plugins"]
+        /// </summary>
+        private static List<string> ParseProbingPrivatePaths(string configPath)
+        {
+            var result = new List<string>();
+            try
+            {
+                var doc = new XmlDocument();
+                doc.Load(configPath);
+                var nsMgr = new XmlNamespaceManager(doc.NameTable);
+                nsMgr.AddNamespace("asm", "urn:schemas-microsoft-com:asm.v1");
+                var nodes = doc.SelectNodes("//asm:probing", nsMgr);
+                if (nodes != null)
+                {
+                    foreach (XmlNode node in nodes)
+                    {
+                        var privatePath = node.Attributes?["privatePath"]?.Value;
+                        if (!string.IsNullOrEmpty(privatePath))
+                        {
+                            foreach (var part in privatePath!.Split(';'))
+                            {
+                                var trimmed = part.Trim();
+                                if (!string.IsNullOrEmpty(trimmed))
+                                    result.Add(trimmed);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error parsing config '{configPath}': {ex.Message}");
+            }
+            return result;
         }
 
         private static string? GetTargetFrameworkFromAssembly(string assemblyPath)
