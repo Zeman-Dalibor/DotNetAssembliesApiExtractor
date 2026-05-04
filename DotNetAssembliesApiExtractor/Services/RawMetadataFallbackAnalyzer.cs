@@ -22,11 +22,17 @@ namespace DotNetAssembliesApiExtractor.Services
         {
             try
             {
-                if (verbose) Console.WriteLine($"[RawMetadata] Fallback analysis for: {assemblyPath}");
+                if (verbose)
+                {
+                    Console.WriteLine($"[RawMetadata] Fallback analysis for: {assemblyPath}");
+                }
 
                 using var stream = File.OpenRead(assemblyPath);
                 using var peReader = new PEReader(stream);
-                if (!peReader.HasMetadata) return null;
+                if (!peReader.HasMetadata)
+                {
+                    return null;
+                }
 
                 var reader = peReader.GetMetadataReader();
                 var assemblyDef = reader.GetAssemblyDefinition();
@@ -46,7 +52,10 @@ namespace DotNetAssembliesApiExtractor.Services
                     var name = reader.GetString(typeDef.Name);
 
                     // Skip the special <Module> type
-                    if (string.IsNullOrEmpty(ns) && name == "<Module>") continue;
+                    if (string.IsNullOrEmpty(ns) && name == "<Module>")
+                    {
+                        continue;
+                    }
 
                     var fullName = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
                     var kind = GetTypeKind(typeDef.Attributes);
@@ -84,14 +93,21 @@ namespace DotNetAssembliesApiExtractor.Services
                         }
                         catch (Exception ex)
                         {
-                            if (verbose) Console.Error.WriteLine($"  [RawMetadata] Warning: skipping method in '{fullName}': {ex.Message}");
+                            if (verbose)
+                            {
+                                Console.Error.WriteLine($"  [RawMetadata] Warning: skipping method in '{fullName}': {ex.Message}");
+                            }
                         }
                     }
 
                     dto.Types.Add(typeDto);
                 }
 
-                if (verbose) Console.WriteLine($"[RawMetadata] Extracted {dto.Types.Count} types from {assemblyPath}");
+                if (verbose)
+                {
+                    Console.WriteLine($"[RawMetadata] Extracted {dto.Types.Count} types from {assemblyPath}");
+                }
+
                 return dto;
             }
             catch (Exception ex)
@@ -106,7 +122,11 @@ namespace DotNetAssembliesApiExtractor.Services
             var name = reader.GetString(def.Name);
             var version = def.Version;
             var culture = reader.GetString(def.Culture);
-            if (string.IsNullOrEmpty(culture)) culture = "neutral";
+            if (string.IsNullOrEmpty(culture))
+            {
+                culture = "neutral";
+            }
+
             var pkt = def.PublicKey.IsNil ? "null" : FormatPublicKeyToken(reader.GetBlobBytes(def.PublicKey));
             return $"{name}, Version={version}, Culture={culture}, PublicKeyToken={pkt}";
         }
@@ -115,21 +135,34 @@ namespace DotNetAssembliesApiExtractor.Services
         {
             // Public key → public key token (SHA1 hash, last 8 bytes reversed)
             // For simplicity, if the key is already 8 bytes it's the token; otherwise compute
-            if (publicKey.Length == 0) return "null";
+            if (publicKey.Length == 0)
+            {
+                return "null";
+            }
+
             if (publicKey.Length == 8)
+            {
                 return BitConverter.ToString(publicKey).Replace("-", "").ToLowerInvariant();
+            }
 
             using var sha1 = System.Security.Cryptography.SHA1.Create();
             var hash = sha1.ComputeHash(publicKey);
             var token = new byte[8];
             for (int i = 0; i < 8; i++)
+            {
                 token[i] = hash[hash.Length - 1 - i];
+            }
+
             return BitConverter.ToString(token).Replace("-", "").ToLowerInvariant();
         }
 
         private static string GetTypeKind(TypeAttributes attrs)
         {
-            if ((attrs & TypeAttributes.Interface) != 0) return "Interface";
+            if ((attrs & TypeAttributes.Interface) != 0)
+            {
+                return "Interface";
+            }
+
             if ((attrs & TypeAttributes.ClassSemanticsMask) == TypeAttributes.Class)
             {
                 // Could be enum or struct — check for sealed+value type heuristically
@@ -162,7 +195,10 @@ namespace DotNetAssembliesApiExtractor.Services
             {
                 var param = reader.GetParameter(ph);
                 // Sequence 0 = return value, skip it
-                if (param.SequenceNumber == 0) continue;
+                if (param.SequenceNumber == 0)
+                {
+                    continue;
+                }
 
                 var name = reader.GetString(param.Name);
                 var typeIndex = param.SequenceNumber - 1;
@@ -251,7 +287,11 @@ namespace DotNetAssembliesApiExtractor.Services
                 sb.Append('<');
                 for (int i = 0; i < typeArguments.Length; i++)
                 {
-                    if (i > 0) sb.Append(',');
+                    if (i > 0)
+                    {
+                        sb.Append(',');
+                    }
+
                     sb.Append(typeArguments[i] ?? "?");
                 }
                 sb.Append('>');

@@ -48,7 +48,11 @@ namespace DotNetAssembliesApiExtractor.Services
 
                 foreach (var t in types)
                 {
-                    if (t == null) continue;
+                    if (t == null)
+                    {
+                        continue;
+                    }
+
                     var typeDto = new TypeDto
                     {
                         FullName = t.FullName,
@@ -145,10 +149,26 @@ namespace DotNetAssembliesApiExtractor.Services
 
         private static string GetTypeKind(Type t)
         {
-            if (t.IsClass) return "Class";
-            if (t.IsInterface) return "Interface";
-            if (t.IsEnum) return "Enum";
-            if (t.IsValueType) return "Struct";
+            if (t.IsClass)
+            {
+                return "Class";
+            }
+
+            if (t.IsInterface)
+            {
+                return "Interface";
+            }
+
+            if (t.IsEnum)
+            {
+                return "Enum";
+            }
+
+            if (t.IsValueType)
+            {
+                return "Struct";
+            }
+
             return "Unknown";
         }
     }

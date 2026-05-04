@@ -32,7 +32,10 @@ namespace DotNetAssembliesApiExtractor.Services
         /// </summary>
         public List<string> CollectResolverPaths(string assemblyPath)
         {
-            if (_verbose) Console.WriteLine($"Collecting resolver paths for: {assemblyPath}");
+            if (_verbose)
+            {
+                Console.WriteLine($"Collecting resolver paths for: {assemblyPath}");
+            }
 
             // Detect target framework early so we can prioritize correct assemblies during dedup
             string? detectedTfm = null;
@@ -45,7 +48,10 @@ namespace DotNetAssembliesApiExtractor.Services
             {
                 try { isNetFramework = ReferencesAssembly(assemblyPath, "mscorlib"); } catch { }
             }
-            if (_verbose) Console.WriteLine($"  [TFM] Detected: {detectedTfm ?? "(none)"}, isNetFramework={isNetFramework}");
+            if (_verbose)
+            {
+                Console.WriteLine($"  [TFM] Detected: {detectedTfm ?? "(none)"}, isNetFramework={isNetFramework}");
+            }
 
             // Collect paths into priority groups.
             // The dedup map is built from lowest to highest priority (last write wins).
@@ -83,11 +89,17 @@ namespace DotNetAssembliesApiExtractor.Services
                             Console.Error.WriteLine($"Error adding TPA entry '{e}': {ex.Message}");
                         }
                     }
-                    if (_verbose) Console.WriteLine($"  [TPA] Added {added} assemblies (scanner's runtime — fallback priority).");
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"  [TPA] Added {added} assemblies (scanner's runtime — fallback priority).");
+                    }
                 }
                 else
                 {
-                    if (_verbose) Console.WriteLine("  [TPA] No Trusted Platform Assemblies found.");
+                    if (_verbose)
+                    {
+                        Console.WriteLine("  [TPA] No Trusted Platform Assemblies found.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -103,11 +115,17 @@ namespace DotNetAssembliesApiExtractor.Services
                 {
                     var files = GetAssemblyFiles(runtimeDir);
                     fallbackPaths.AddRange(files);
-                    if (_verbose) Console.WriteLine($"  [ScannerRuntime] Added {files.Length} assemblies from scanner's runtime directory: {runtimeDir} (fallback priority).");
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"  [ScannerRuntime] Added {files.Length} assemblies from scanner's runtime directory: {runtimeDir} (fallback priority).");
+                    }
                 }
                 else
                 {
-                    if (_verbose) Console.WriteLine("  [ScannerRuntime] Runtime directory not found.");
+                    if (_verbose)
+                    {
+                        Console.WriteLine("  [ScannerRuntime] Runtime directory not found.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -122,11 +140,17 @@ namespace DotNetAssembliesApiExtractor.Services
                 {
                     var files = GetAssemblyFiles(_referenceAssembliesDir);
                     userRefPaths.AddRange(files);
-                    if (_verbose) Console.WriteLine($"  [UserRef] Added {files.Length} assemblies from user-provided directory: {_referenceAssembliesDir}");
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"  [UserRef] Added {files.Length} assemblies from user-provided directory: {_referenceAssembliesDir}");
+                    }
                 }
                 else
                 {
-                    if (_verbose) Console.WriteLine("  [UserRef] No user-provided reference assemblies directory configured or found.");
+                    if (_verbose)
+                    {
+                        Console.WriteLine("  [UserRef] No user-provided reference assemblies directory configured or found.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -139,22 +163,35 @@ namespace DotNetAssembliesApiExtractor.Services
             {
                 if (!string.IsNullOrEmpty(detectedTfm))
                 {
-                    if (_verbose) Console.WriteLine($"  [TFM] Using detected target framework: {detectedTfm}");
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"  [TFM] Using detected target framework: {detectedTfm}");
+                    }
+
                     var tfmFiles = FindReferenceAssembliesForTfm(detectedTfm);
                     if (tfmFiles != null && tfmFiles.Any())
                     {
                         var tfmList = tfmFiles.ToList();
                         tfmRefPaths.AddRange(tfmList);
-                        if (_verbose) Console.WriteLine($"  [TFM] Added {tfmList.Count} assemblies for TFM '{detectedTfm}'.");
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"  [TFM] Added {tfmList.Count} assemblies for TFM '{detectedTfm}'.");
+                        }
                     }
                     else
                     {
-                        if (_verbose) Console.WriteLine($"  [TFM] No reference assemblies found for TFM '{detectedTfm}'.");
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"  [TFM] No reference assemblies found for TFM '{detectedTfm}'.");
+                        }
                     }
                 }
                 else
                 {
-                    if (_verbose) Console.WriteLine("  [TFM] Could not detect target framework from assembly.");
+                    if (_verbose)
+                    {
+                        Console.WriteLine("  [TFM] Could not detect target framework from assembly.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -170,7 +207,10 @@ namespace DotNetAssembliesApiExtractor.Services
                 {
                     var files = GetAssemblyFiles(assemblyDir);
                     localPaths.AddRange(files);
-                    if (_verbose) Console.WriteLine($"  [Local] Added {files.Length} assemblies from target assembly directory: {assemblyDir}");
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"  [Local] Added {files.Length} assemblies from target assembly directory: {assemblyDir}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -193,11 +233,17 @@ namespace DotNetAssembliesApiExtractor.Services
                         {
                             var files = GetAssemblyFiles(probingDir);
                             localPaths.AddRange(files);
-                            if (_verbose) Console.WriteLine($"  [Probing] Added {files.Length} assemblies from privatePath '{relativePath}': {probingDir}");
+                            if (_verbose)
+                            {
+                                Console.WriteLine($"  [Probing] Added {files.Length} assemblies from privatePath '{relativePath}': {probingDir}");
+                            }
                         }
                         else
                         {
-                            if (_verbose) Console.WriteLine($"  [Probing] privatePath directory not found: {probingDir}");
+                            if (_verbose)
+                            {
+                                Console.WriteLine($"  [Probing] privatePath directory not found: {probingDir}");
+                            }
                         }
                     }
                 }
@@ -227,7 +273,10 @@ namespace DotNetAssembliesApiExtractor.Services
                         Console.Error.WriteLine($"Error adding loaded assembly '{a.FullName}': {ex.Message}");
                     }
                 }
-                if (_verbose) Console.WriteLine($"  [AppDomain] Added {added} assemblies from scanner's AppDomain (fallback priority).");
+                if (_verbose)
+                {
+                    Console.WriteLine($"  [AppDomain] Added {added} assemblies from scanner's AppDomain (fallback priority).");
+                }
             }
             catch (Exception ex)
             {
@@ -248,16 +297,25 @@ namespace DotNetAssembliesApiExtractor.Services
                     {
                         var files = GetAssemblyFiles(latestRuntime);
                         fallbackPaths.AddRange(files);
-                        if (_verbose) Console.WriteLine($"  [NetCoreFallback] Added {files.Length} assemblies from installed runtime: {latestRuntime}");
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"  [NetCoreFallback] Added {files.Length} assemblies from installed runtime: {latestRuntime}");
+                        }
                     }
                     else
                     {
-                        if (_verbose) Console.WriteLine("  [NetCoreFallback] No .NET Core runtime directories found.");
+                        if (_verbose)
+                        {
+                            Console.WriteLine("  [NetCoreFallback] No .NET Core runtime directories found.");
+                        }
                     }
                 }
                 else
                 {
-                    if (_verbose) Console.WriteLine($"  [NetCoreFallback] .NET Core shared directory not found: {netCoreAppDir}");
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"  [NetCoreFallback] .NET Core shared directory not found: {netCoreAppDir}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -283,16 +341,25 @@ namespace DotNetAssembliesApiExtractor.Services
                         var files = GetAssemblyFiles(latestDesktop);
                         // Add AFTER NETCore.App so full WPF assemblies overwrite the stubs
                         fallbackPaths.AddRange(files);
-                        if (_verbose) Console.WriteLine($"  [WpfDesktop] Added {files.Length} assemblies from installed desktop runtime: {latestDesktop}");
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"  [WpfDesktop] Added {files.Length} assemblies from installed desktop runtime: {latestDesktop}");
+                        }
                     }
                     else
                     {
-                        if (_verbose) Console.WriteLine("  [WpfDesktop] No Windows Desktop runtime directories found.");
+                        if (_verbose)
+                        {
+                            Console.WriteLine("  [WpfDesktop] No Windows Desktop runtime directories found.");
+                        }
                     }
                 }
                 else
                 {
-                    if (_verbose) Console.WriteLine($"  [WpfDesktop] Windows Desktop shared directory not found: {desktopAppDir}");
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"  [WpfDesktop] Windows Desktop shared directory not found: {desktopAppDir}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -320,7 +387,10 @@ namespace DotNetAssembliesApiExtractor.Services
                         {
                             var files = GetAssemblyFiles(dir);
                             netFxSysPaths.AddRange(files);
-                            if (_verbose) Console.WriteLine($"  [NetFxSystem] Added {files.Length} assemblies from: {dir}");
+                            if (_verbose)
+                            {
+                                Console.WriteLine($"  [NetFxSystem] Added {files.Length} assemblies from: {dir}");
+                            }
 
                             // include subdirectories (e.g. WPF subfolder contains PresentationFramework.dll)
                             foreach (var subDir in Directory.GetDirectories(dir))
@@ -329,7 +399,10 @@ namespace DotNetAssembliesApiExtractor.Services
                                 if (subFiles.Length > 0)
                                 {
                                     netFxSysPaths.AddRange(subFiles);
-                                    if (_verbose) Console.WriteLine($"  [NetFxSystem] Added {subFiles.Length} assemblies from: {subDir}");
+                                    if (_verbose)
+                                    {
+                                        Console.WriteLine($"  [NetFxSystem] Added {subFiles.Length} assemblies from: {subDir}");
+                                    }
                                 }
                             }
 
@@ -339,7 +412,10 @@ namespace DotNetAssembliesApiExtractor.Services
                     }
                     if (!found)
                     {
-                        if (_verbose) Console.WriteLine("  [NetFxSystem] No .NET Framework directory found.");
+                        if (_verbose)
+                        {
+                            Console.WriteLine("  [NetFxSystem] No .NET Framework directory found.");
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -368,7 +444,10 @@ namespace DotNetAssembliesApiExtractor.Services
             if (isNetFramework)
             {
                 AddToResolverMap(map, netFxSysPaths);
-                if (_verbose) Console.WriteLine("  [Priority] .NET Framework target: fallback < NetFx < TFM < UserRef < Local");
+                if (_verbose)
+                {
+                    Console.WriteLine("  [Priority] .NET Framework target: fallback < NetFx < TFM < UserRef < Local");
+                }
             }
             else
             {
@@ -379,8 +458,14 @@ namespace DotNetAssembliesApiExtractor.Services
                 AddToResolverMap(map, netFxSysPaths);
                 // Restore scanner fallback paths on top (they are .NET Core, more relevant)
                 foreach (var kvp in mapBackup)
+                {
                     map[kvp.Key] = kvp.Value;
-                if (_verbose) Console.WriteLine("  [Priority] .NET Core target: NetFx < fallback < TFM < UserRef < Local");
+                }
+
+                if (_verbose)
+                {
+                    Console.WriteLine("  [Priority] .NET Core target: NetFx < fallback < TFM < UserRef < Local");
+                }
             }
 
             // P3: TFM reference assemblies (correct target runtime version)
@@ -397,14 +482,20 @@ namespace DotNetAssembliesApiExtractor.Services
             {
                 var asmName = Path.GetFileName(assemblyPath);
                 if (!string.IsNullOrEmpty(asmName))
+                {
                     map[asmName] = assemblyPath;
+                }
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Error ensuring analyzed assembly path: {ex.Message}");
             }
 
-            if (_verbose) Console.WriteLine($"  [Summary] Total unique resolver assemblies: {map.Count} (from {totalCandidates} candidates before dedup).");
+            if (_verbose)
+            {
+                Console.WriteLine($"  [Summary] Total unique resolver assemblies: {map.Count} (from {totalCandidates} candidates before dedup).");
+            }
+
             return map.Values.ToList();
         }
 
@@ -416,7 +507,9 @@ namespace DotNetAssembliesApiExtractor.Services
                 {
                     var name = Path.GetFileName(p);
                     if (!string.IsNullOrEmpty(name))
+                    {
                         map[name] = p;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -429,14 +522,20 @@ namespace DotNetAssembliesApiExtractor.Services
         {
             using var stream = File.OpenRead(assemblyPath);
             using var peReader = new PEReader(stream);
-            if (!peReader.HasMetadata) return false;
+            if (!peReader.HasMetadata)
+            {
+                return false;
+            }
+
             var reader = peReader.GetMetadataReader();
             foreach (var refHandle in reader.AssemblyReferences)
             {
                 var asmRef = reader.GetAssemblyReference(refHandle);
                 var name = reader.GetString(asmRef.Name);
                 if (string.Equals(name, assemblySimpleName, StringComparison.OrdinalIgnoreCase))
+                {
                     return true;
+                }
             }
             return false;
         }
@@ -462,7 +561,9 @@ namespace DotNetAssembliesApiExtractor.Services
                             {
                                 var trimmed = part.Trim();
                                 if (!string.IsNullOrEmpty(trimmed))
+                                {
                                     result.Add(trimmed);
+                                }
                             }
                         }
                     }
@@ -481,7 +582,11 @@ namespace DotNetAssembliesApiExtractor.Services
             {
                 using var stream = File.OpenRead(assemblyPath);
                 using var peReader = new PEReader(stream);
-                if (!peReader.HasMetadata) return null;
+                if (!peReader.HasMetadata)
+                {
+                    return null;
+                }
+
                 var reader = peReader.GetMetadataReader();
                 var assemblyDef = reader.GetAssemblyDefinition();
 
@@ -551,20 +656,39 @@ namespace DotNetAssembliesApiExtractor.Services
 
         private static (string? value, int bytesRead) ReadSerString(byte[] blob, int index)
         {
-            if (index >= blob.Length) return (null, 0);
-            if (blob[index] == 0xFF) return (null, 1);
+            if (index >= blob.Length)
+            {
+                return (null, 0);
+            }
+
+            if (blob[index] == 0xFF)
+            {
+                return (null, 1);
+            }
 
             var (len, lenBytes) = ReadCompressedUInt32(blob, index);
-            if (len == 0) return (string.Empty, lenBytes);
+            if (len == 0)
+            {
+                return (string.Empty, lenBytes);
+            }
+
             var start = index + lenBytes;
-            if (start + (int)len > blob.Length) return (null, lenBytes);
+            if (start + (int)len > blob.Length)
+            {
+                return (null, lenBytes);
+            }
+
             var s = Encoding.UTF8.GetString(blob, start, (int)len);
             return (s, lenBytes + (int)len);
         }
 
         private static (uint value, int bytesRead) ReadCompressedUInt32(byte[] blob, int index)
         {
-            if (index >= blob.Length) return (0, 0);
+            if (index >= blob.Length)
+            {
+                return (0, 0);
+            }
+
             byte first = blob[index];
             if ((first & 0x80) == 0)
             {
@@ -572,13 +696,21 @@ namespace DotNetAssembliesApiExtractor.Services
             }
             else if ((first & 0xC0) == 0x80)
             {
-                if (index + 1 >= blob.Length) return (0, 1);
+                if (index + 1 >= blob.Length)
+                {
+                    return (0, 1);
+                }
+
                 uint value = (uint)(((first & 0x3F) << 8) | blob[index + 1]);
                 return (value, 2);
             }
             else if ((first & 0xE0) == 0xC0)
             {
-                if (index + 3 >= blob.Length) return (0, 1);
+                if (index + 3 >= blob.Length)
+                {
+                    return (0, 1);
+                }
+
                 uint value = (uint)(((first & 0x1F) << 24) | (blob[index + 1] << 16) | (blob[index + 2] << 8) | blob[index + 3]);
                 return (value, 4);
             }
@@ -609,7 +741,9 @@ namespace DotNetAssembliesApiExtractor.Services
                     {
                         var candidate = Path.Combine(baseDir, $"v{version}");
                         if (Directory.Exists(candidate))
+                        {
                             return GetAssemblyFiles(candidate);
+                        }
                     }
                     if (Directory.Exists(baseDir))
                     {
@@ -617,7 +751,10 @@ namespace DotNetAssembliesApiExtractor.Services
                         foreach (var d in dirs)
                         {
                             var files = GetAssemblyFiles(d);
-                            if (files.Length > 0) return files;
+                            if (files.Length > 0)
+                            {
+                                return files;
+                            }
                         }
                     }
                 }
@@ -629,7 +766,9 @@ namespace DotNetAssembliesApiExtractor.Services
                     {
                         var candidate = Path.Combine(baseDir, version);
                         if (Directory.Exists(candidate))
+                        {
                             return GetAssemblyFiles(candidate);
+                        }
                     }
                     if (Directory.Exists(baseDir))
                     {
@@ -637,7 +776,10 @@ namespace DotNetAssembliesApiExtractor.Services
                         foreach (var d in dirs)
                         {
                             var files = GetAssemblyFiles(d);
-                            if (files.Length > 0) return files;
+                            if (files.Length > 0)
+                            {
+                                return files;
+                            }
                         }
                     }
                 }

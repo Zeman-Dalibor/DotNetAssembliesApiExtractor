@@ -21,72 +21,12 @@ namespace DotNetAssembliesApiExtractor
                 var outputDir = Path.GetFullPath(options.OutputDir);
                 Directory.CreateDirectory(outputDir);
 
-                // --singleFile mode: analyze one assembly, write JSON, exit.
-                // Used by the parent process for crash isolation.
                 if (!string.IsNullOrEmpty(options.SingleFile))
                 {
                     return RunSingleFile(options.SingleFile!, outputDir, options);
                 }
 
-                var scanDir = Path.GetFullPath(options.ScanDir);
-
-                if (!Directory.Exists(scanDir))
-                {
-                    Console.Error.WriteLine($"Scan directory not found: {scanDir}");
-                    return 2;
-                }
-
-                var stdoutLogPath = Path.Combine(outputDir, "stdout.log");
-                var stderrLogPath = Path.Combine(outputDir, "stderr.log");
-
-                using var stdoutTee = new TeeTextWriter(Console.Out, stdoutLogPath);
-                using var stderrTee = new TeeTextWriter(Console.Error, stderrLogPath);
-                Console.SetOut(stdoutTee);
-                Console.SetError(stderrTee);
-
-                Console.WriteLine($"Scanning: {scanDir}");
-                Console.WriteLine($"Output: {outputDir}");
-                Console.WriteLine();
-
-                var selfExe = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
-                var isDotnetRun = selfExe != null && Path.GetFileNameWithoutExtension(selfExe).Equals("dotnet", StringComparison.OrdinalIgnoreCase);
-
-                var scanner = new AssemblyScanner(options.ReferenceAssembliesDir, options.Verbose);
-
-                foreach (var filePath in scanner.EnumerateAssemblyFiles(scanDir))
-                {
-                    var fileName = Path.GetFileName(filePath);
-                    var outPath = Path.Combine(outputDir, fileName + ".json");
-
-                    if (File.Exists(outPath))
-                    {
-                        Console.WriteLine($"Already exists, skipping: {outPath}");
-                        Console.WriteLine();
-                        continue;
-                    }
-
-                    // Spawn a child process to isolate StackOverflowException crashes
-                    var exitCode = RunChildProcess(selfExe, isDotnetRun, filePath, outputDir, options, rawMetadata: false);
-
-                    // If MetadataLoadContext failed (any non-zero exit), retry with raw MetadataReader fallback
-                    if (exitCode != 0)
-                    {
-                        Console.Error.WriteLine($"MetadataLoadContext analysis failed (exit code {exitCode}) for: {filePath} — retrying with raw MetadataReader...");
-                        exitCode = RunChildProcess(selfExe, isDotnetRun, filePath, outputDir, options, rawMetadata: true);
-                    }
-
-                    if (exitCode == 0)
-                    {
-                        Console.WriteLine($"Wrote: {outPath}");
-                    }
-                    else
-                    {
-                        Console.Error.WriteLine($"Child process failed (exit code {exitCode}) for: {filePath}");
-                    }
-                    Console.WriteLine();
-                }
-
-                return 0;
+                return ScanDirectory(options, outputDir);
             }
             catch (Exception ex)
             {
@@ -95,6 +35,10 @@ namespace DotNetAssembliesApiExtractor
             }
         }
 
+        /// <summary>
+        /// Analyze one assembly in-process, write JSON, exit.
+        /// Used by the parent process (child process for crash isolation).
+        /// </summary>
         private static int RunSingleFile(string filePath, string outputDir, CliOptions options)
         {
             Models.AssemblyDto? dto;
@@ -111,7 +55,9 @@ namespace DotNetAssembliesApiExtractor
             }
 
             if (dto == null)
+            {
                 return 3;
+            }
 
             var fileName = (dto.FileName ?? "unknown") + ".json";
             var outPath = Path.Combine(outputDir, fileName);
@@ -119,15 +65,89 @@ namespace DotNetAssembliesApiExtractor
             return 0;
         }
 
+        /// <summary>
+        /// Enumerate all assemblies in a directory, spawning a child process per file
+        /// to isolate StackOverflowException crashes. Falls back to raw MetadataReader on failure.
+        /// </summary>
+        private static int ScanDirectory(CliOptions options, string outputDir)
+        {
+            var scanDir = Path.GetFullPath(options.ScanDir);
+
+            if (!Directory.Exists(scanDir))
+            {
+                Console.Error.WriteLine($"Scan directory not found: {scanDir}");
+                return 2;
+            }
+
+            var stdoutLogPath = Path.Combine(outputDir, "stdout.log");
+            var stderrLogPath = Path.Combine(outputDir, "stderr.log");
+
+            using var stdoutTee = new TeeTextWriter(Console.Out, stdoutLogPath);
+            using var stderrTee = new TeeTextWriter(Console.Error, stderrLogPath);
+            Console.SetOut(stdoutTee);
+            Console.SetError(stderrTee);
+
+            Console.WriteLine($"Scanning: {scanDir}");
+            Console.WriteLine($"Output: {outputDir}");
+            Console.WriteLine();
+
+            var selfExe = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
+            var isDotnetRun = selfExe != null && Path.GetFileNameWithoutExtension(selfExe).Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+
+            var scanner = new AssemblyScanner(options.ReferenceAssembliesDir, options.Verbose);
+
+            foreach (var filePath in scanner.EnumerateAssemblyFiles(scanDir))
+            {
+                var fileName = Path.GetFileName(filePath);
+                var outPath = Path.Combine(outputDir, fileName + ".json");
+
+                if (File.Exists(outPath))
+                {
+                    Console.WriteLine($"Already exists, skipping: {outPath}");
+                    Console.WriteLine();
+                    continue;
+                }
+
+                var exitCode = RunChildProcess(selfExe, isDotnetRun, filePath, outputDir, options, rawMetadata: false);
+
+                // If MetadataLoadContext failed (any non-zero exit), retry with raw MetadataReader fallback
+                if (exitCode != 0)
+                {
+                    Console.Error.WriteLine($"MetadataLoadContext analysis failed (exit code {exitCode}) for: {filePath} — retrying with raw MetadataReader...");
+                    exitCode = RunChildProcess(selfExe, isDotnetRun, filePath, outputDir, options, rawMetadata: true);
+                }
+
+                if (exitCode == 0)
+                {
+                    Console.WriteLine($"Wrote: {outPath}");
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Child process failed (exit code {exitCode}) for: {filePath}");
+                }
+                Console.WriteLine();
+            }
+
+            return 0;
+        }
+
         private static int RunChildProcess(string? selfExe, bool isDotnetRun, string filePath, string outputDir, CliOptions options, bool rawMetadata)
         {
             var childArgs = $"--singleFile \"{filePath}\" --outputDir \"{outputDir}\"";
             if (!string.IsNullOrEmpty(options.ReferenceAssembliesDir))
+            {
                 childArgs += $" --refsDir \"{options.ReferenceAssembliesDir}\"";
+            }
+
             if (options.Verbose)
+            {
                 childArgs += " --verbose";
+            }
+
             if (rawMetadata)
+            {
                 childArgs += " --rawMetadata";
+            }
 
             ProcessStartInfo psi;
             if (isDotnetRun)
@@ -148,18 +168,21 @@ namespace DotNetAssembliesApiExtractor
             try
             {
                 using var proc = Process.Start(psi);
-                if (proc == null) return -1;
+                if (proc == null)
+                {
+                    return -1;
+                }
 
                 // Read both streams asynchronously to avoid deadlock
                 var stdoutTask = System.Threading.Tasks.Task.Run(() => proc.StandardOutput.ReadToEnd());
                 var stderrTask = System.Threading.Tasks.Task.Run(() => proc.StandardError.ReadToEnd());
 
-                proc.WaitForExit(60_000);
+                proc.WaitForExit(options.TimeoutMs);
 
                 if (!proc.HasExited)
                 {
                     proc.Kill();
-                    Console.Error.WriteLine($"Child process timed out (60s) for: {filePath}");
+                    Console.Error.WriteLine($"Child process timed out ({options.TimeoutMs / 1000}s) for: {filePath}");
                     return -2;
                 }
 
@@ -167,7 +190,9 @@ namespace DotNetAssembliesApiExtractor
                 var stderr = stderrTask.Result;
 
                 if (!string.IsNullOrEmpty(stdout))
+                {
                     Console.Write(stdout);
+                }
 
                 if (!string.IsNullOrEmpty(stderr))
                 {
